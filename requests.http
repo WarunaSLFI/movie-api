@@ -1,0 +1,109 @@
+# Movie API — REST Client requests (Exercise 3)
+# Start the server first: npm start
+# Click "Send Request" above a request, or press Ctrl+Alt+R (Cmd+Alt+R on macOS).
+
+@baseUrl = http://localhost:3000
+
+### Get all movies
+# Expected: 200 OK
+GET {{baseUrl}}/movies
+
+### Get movie by ID
+# Expected: 200 OK
+GET {{baseUrl}}/movies/1
+
+### Movie that does not exist
+# Expected: 404 Not Found
+GET {{baseUrl}}/movies/999
+
+### Create a new movie
+# Expected: 201 Created
+# @name createMovie
+POST {{baseUrl}}/movies
+Content-Type: application/json
+
+{
+  "title": "Blade Runner",
+  "director": "Ridley Scott",
+  "year": 1982
+}
+
+### Check that the new movie appears in the list
+# Expected: 200 OK, Blade Runner is in the response
+GET {{baseUrl}}/movies
+
+### Invalid movie (title and year missing)
+# Expected: 400 Bad Request
+POST {{baseUrl}}/movies
+Content-Type: application/json
+
+{
+  "director": "Nobody"
+}
+
+### Invalid year
+# Expected: 400 Bad Request
+POST {{baseUrl}}/movies
+Content-Type: application/json
+
+{
+  "title": "Future Film",
+  "director": "Someone",
+  "year": "next year"
+}
+
+### Body that is not valid JSON
+# Expected: 400 Bad Request (rejected by express.json())
+POST {{baseUrl}}/movies
+Content-Type: application/json
+
+{ "title": "Oops",
+
+### Unknown route
+# Expected: 404 Not Found
+GET {{baseUrl}}/films
+
+
+######## Bonus: PATCH and DELETE ########
+
+### Update a movie
+# Expected: 200 OK
+PATCH {{baseUrl}}/movies/1
+Content-Type: application/json
+
+{
+  "year": 2011
+}
+
+### Verify the update
+# Expected: 200 OK with year 2011
+GET {{baseUrl}}/movies/1
+
+### Update the movie created above (uses the id from the createMovie response)
+# Expected: 200 OK
+PATCH {{baseUrl}}/movies/{{createMovie.response.body.id}}
+Content-Type: application/json
+
+{
+  "title": "Blade Runner: The Final Cut",
+  "year": 2007
+}
+
+### PATCH with nothing to change
+# Expected: 400 Bad Request
+PATCH {{baseUrl}}/movies/1
+Content-Type: application/json
+
+{}
+
+### Delete a movie
+# Expected: 204 No Content
+DELETE {{baseUrl}}/movies/1
+
+### Verify the delete
+# Expected: 404 Not Found
+GET {{baseUrl}}/movies/1
+
+### Delete a movie that does not exist
+# Expected: 404 Not Found
+DELETE {{baseUrl}}/movies/999
