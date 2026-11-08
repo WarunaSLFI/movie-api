@@ -1,4 +1,5 @@
-// Automated version of the Exercise 3 scenarios. Run with: npm test
+// Automated version of the Week 2 test cases (Task 5). Run with: npm test
+// The tests share one server and one movies array, so they run in order.
 process.env.NODE_ENV = "test";
 
 const { test, before, after } = require("node:test");
@@ -24,58 +25,169 @@ async function request(method, path, body) {
   }
   const res = await fetch(baseUrl + path, init);
   const text = await res.text();
-  return { status: res.status, body: text ? JSON.parse(text) : null };
+  return { status: res.status, text, body: text ? JSON.parse(text) : null };
 }
 
-test("GET /movies returns all movies", async () => {
+const titles = (list) => list.map((movie) => movie.title);
+const notFound = {
+  error: { code: "MOVIE_NOT_FOUND", message: "Movie not found" },
+};
+
+/* ---------- Read ---------- */
+
+test("GET /movies returns an array of all movies", async () => {
   const res = await request("GET", "/movies");
   assert.equal(res.status, 200);
-  assert.equal(res.body.length, 3);
+  assert.ok(Array.isArray(res.body));
+  assert.equal(res.body.length, 5);
 });
 
-test("GET /movies/1 returns one movie", async () => {
+test("GET /movies/1 returns the correct movie", async () => {
   const res = await request("GET", "/movies/1");
   assert.equal(res.status, 200);
-  assert.equal(res.body.title, "Inception");
+  assert.deepEqual(res.body, {
+    id: 1,
+    title: "Inception",
+    year: 2010,
+    genre: "Sci-Fi",
+  });
 });
 
-test("GET /movies/999 returns 404", async () => {
+test("GET /movies/999 returns a consistent 404 error", async () => {
   const res = await request("GET", "/movies/999");
   assert.equal(res.status, 404);
-  assert.deepEqual(res.body, { error: "Movie not found" });
+  assert.deepEqual(res.body, notFound);
 });
 
-test("POST /movies creates a movie with a new id", async () => {
+/* ---------- Query parameters ---------- */
+
+test("genre filter is case-insensitive", async () => {
+  const res = await request("GET", "/movies?genre=sci-fi");
+  assert.equal(res.status, 200);
+  assert.deepEqual(titles(res.body), [
+    "Inception",
+    "The Matrix",
+    "Interstellar",
+  ]);
+});
+
+test("minYear returns movies from that year onwards", async () => {
+  const res = await request("GET", "/movies?minYear=2010");
+  assert.equal(res.status, 200);
+  assert.deepEqual(titles(res.body), ["Inception", "Parasite", "Interstellar"]);
+});
+
+test("genre and minYear together apply both filters", async () => {
+  const res = await request("GET", "/movies?genre=Sci-Fi&minYear=2000");
+  assert.equal(res.status, 200);
+  assert.deepEqual(titles(res.body), ["Inception", "Interstellar"]);
+});
+
+test("no matching movies returns 200 with an empty array", async () => {
+  const res = await request("GET", "/movies?genre=Western");
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, []);
+});
+
+test("sort=year sorts from oldest to newest", async () => {
+  const res = await request("GET", "/movies?sort=year");
+  assert.equal(res.status, 200);
+  assert.deepEqual(
+    res.body.map((movie) => movie.year),
+    [1999, 2001, 2010, 2014, 2019],
+  );
+});
+
+test("sort=title sorts alphabetically", async () => {
+  const res = await request("GET", "/movies?sort=title");
+  assert.deepEqual(titles(res.body), [
+    "Inception",
+    "Interstellar",
+    "Parasite",
+    "Spirited Away",
+    "The Matrix",
+  ]);
+});
+
+test("filter and sort can be combined", async () => {
+  const res = await request(
+    "GET",
+    "/movies?genre=Sci-Fi&minYear=2000&sort=year",
+  );
+  assert.deepEqual(titles(res.body), ["Inception", "Interstellar"]);
+});
+
+test("sorting does not change the order of the stored array", async () => {
+  await request("GET", "/movies?sort=title");
+  const res = await request("GET", "/movies");
+  assert.deepEqual(
+    res.body.map((movie) => movie.id),
+    [1, 2, 3, 4, 5],
+  );
+});
+
+test("invalid minYear returns 400", async () => {
+  const res = await request("GET", "/movies?minYear=invalid");
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.code, "INVALID_QUERY");
+  assert.deepEqual(res.body.error.details, [
+    "minYear must be a whole number, for example ?minYear=2000",
+  ]);
+});
+
+test("unsupported sort value returns 400", async () => {
+  const res = await request("GET", "/movies?sort=rating");
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body.error.details, [
+    "sort must be one of: year, title",
+  ]);
+});
+
+/* ---------- Create ---------- */
+
+test("POST /movies creates a movie and the server creates the id", async () => {
   const res = await request("POST", "/movies", {
-    title: "Blade Runner",
-    director: "Ridley Scott",
-    year: 1982,
+    id: 100, // ignored: the client does not choose the id
+    title: "Arrival",
+    year: 2016,
+    genre: "Sci-Fi",
   });
   assert.equal(res.status, 201);
   assert.deepEqual(res.body, {
-    id: 4,
-    title: "Blade Runner",
-    director: "Ridley Scott",
-    year: 1982,
+    id: 6,
+    title: "Arrival",
+    year: 2016,
+    genre: "Sci-Fi",
   });
 
   const list = await request("GET", "/movies");
-  assert.ok(list.body.some((movie) => movie.title === "Blade Runner"));
+  assert.ok(titles(list.body).includes("Arrival"));
 });
 
-test("POST /movies with missing data returns 400", async () => {
-  const res = await request("POST", "/movies", { director: "Nobody" });
+test("POST /movies with invalid data returns validation details", async () => {
+  const res = await request("POST", "/movies", {
+    title: "",
+    year: "not a number",
+  });
   assert.equal(res.status, 400);
   assert.deepEqual(res.body, {
-    error: "title, director and year are required",
+    error: {
+      code: "VALIDATION_ERROR",
+      message: "Movie data is invalid",
+      details: [
+        "title must be a non-empty string",
+        `year must be an integer between 1888 and ${new Date().getFullYear() + 5}`,
+        "genre is required",
+      ],
+    },
   });
 });
 
-test("POST /movies with an invalid year returns 400", async () => {
+test("POST /movies rejects a year in the far future", async () => {
   const res = await request("POST", "/movies", {
-    title: "X",
-    director: "Y",
-    year: "soon",
+    title: "Future Film",
+    year: new Date().getFullYear() + 6,
+    genre: "Sci-Fi",
   });
   assert.equal(res.status, 400);
 });
@@ -83,31 +195,112 @@ test("POST /movies with an invalid year returns 400", async () => {
 test("POST /movies with broken JSON returns 400", async () => {
   const res = await request("POST", "/movies", '{ "title": ');
   assert.equal(res.status, 400);
-  assert.deepEqual(res.body, { error: "Request body is not valid JSON" });
+  assert.equal(res.body.error.code, "INVALID_JSON");
 });
 
-test("PATCH /movies/1 updates only the fields sent", async () => {
-  const res = await request("PATCH", "/movies/1", { year: 2011 });
-  assert.equal(res.status, 200);
-  assert.equal(res.body.year, 2011);
-  assert.equal(res.body.title, "Inception");
-});
+/* ---------- Replace (PUT) ---------- */
 
-test("DELETE /movies/4 removes the movie and its id is not reused", async () => {
-  assert.equal((await request("DELETE", "/movies/4")).status, 204);
-  assert.equal((await request("GET", "/movies/4")).status, 404);
-  assert.equal((await request("DELETE", "/movies/4")).status, 404);
-
-  const created = await request("POST", "/movies", {
-    title: "Alien",
-    director: "Ridley Scott",
-    year: 1979,
+test("PUT /movies/1 replaces all editable fields and keeps the id", async () => {
+  const res = await request("PUT", "/movies/1", {
+    title: "Inception: Updated Edition",
+    year: 2010,
+    genre: "Thriller",
   });
-  assert.equal(created.body.id, 5);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, {
+    id: 1,
+    title: "Inception: Updated Edition",
+    year: 2010,
+    genre: "Thriller",
+  });
+  assert.deepEqual((await request("GET", "/movies/1")).body, res.body);
 });
 
-test("unknown routes return JSON 404", async () => {
-  const res = await request("GET", "/films");
+test("PUT with a missing property is rejected", async () => {
+  const res = await request("PUT", "/movies/1", { title: "Inception" });
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body.error.details, [
+    "year is required",
+    "genre is required",
+  ]);
+  // nothing changed
+  assert.equal((await request("GET", "/movies/1")).body.genre, "Thriller");
+});
+
+test("PUT on a missing movie returns 404", async () => {
+  const res = await request("PUT", "/movies/999", {
+    title: "Ghost",
+    year: 1990,
+    genre: "Drama",
+  });
   assert.equal(res.status, 404);
-  assert.deepEqual(res.body, { error: "Cannot GET /films" });
+  assert.deepEqual(res.body, notFound);
+});
+
+/* ---------- Update (PATCH) ---------- */
+
+test("PATCH changes only the properties that are sent", async () => {
+  const res = await request("PATCH", "/movies/2", { year: 2000 });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, {
+    id: 2,
+    title: "The Matrix",
+    year: 2000,
+    genre: "Sci-Fi",
+  });
+});
+
+test("PATCH with an invalid value returns 400", async () => {
+  const res = await request("PATCH", "/movies/2", { genre: "" });
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body.error.details, [
+    "genre must be a non-empty string",
+  ]);
+});
+
+test("PATCH with no movie properties returns 400", async () => {
+  const res = await request("PATCH", "/movies/2", {});
+  assert.equal(res.status, 400);
+});
+
+test("PATCH on a missing movie returns 404", async () => {
+  const res = await request("PATCH", "/movies/999", { year: 2000 });
+  assert.equal(res.status, 404);
+});
+
+/* ---------- Delete ---------- */
+
+test("DELETE returns 204 with an empty body", async () => {
+  const res = await request("DELETE", "/movies/6");
+  assert.equal(res.status, 204);
+  assert.equal(res.text, "");
+});
+
+test("deleting the same movie again returns 404", async () => {
+  const res = await request("DELETE", "/movies/6");
+  assert.equal(res.status, 404);
+  assert.deepEqual(res.body, notFound);
+  assert.equal((await request("GET", "/movies/6")).status, 404);
+});
+
+test("a deleted movie's id is not reused", async () => {
+  const res = await request("POST", "/movies", {
+    title: "Alien",
+    year: 1979,
+    genre: "Horror",
+  });
+  assert.equal(res.body.id, 7);
+});
+
+/* ---------- Fallback middleware ---------- */
+
+test("unknown routes return a JSON 404", async () => {
+  const res = await request("GET", "/does-not-exist");
+  assert.equal(res.status, 404);
+  assert.deepEqual(res.body, {
+    error: {
+      code: "ROUTE_NOT_FOUND",
+      message: "The requested route does not exist",
+    },
+  });
 });

@@ -1,109 +1,169 @@
-# Movie API — REST Client requests (Exercise 3)
+# Movie API — REST Client requests (Week 2, Task 5)
 # Start the server first: npm start
 # Click "Send Request" above a request, or press Ctrl+Alt+R (Cmd+Alt+R on macOS).
+#
+# The file can be run again and again without restarting the server:
+# PUT and PATCH always send the same data to movie 1, and DELETE removes the
+# movie that "Create a valid movie" has just created (send that one first).
 
 @baseUrl = http://localhost:3000
 
+
+######## Read ########
+
 ### Get all movies
-# Expected: 200 OK
+# Expected: 200 OK, an array of movies
 GET {{baseUrl}}/movies
 
-### Get movie by ID
-# Expected: 200 OK
+### Get one existing movie
+# Expected: 200 OK, the movie with id 1
 GET {{baseUrl}}/movies/1
 
-### Movie that does not exist
-# Expected: 404 Not Found
+### Get a missing movie
+# Expected: 404 Not Found, error code MOVIE_NOT_FOUND
 GET {{baseUrl}}/movies/999
 
-### Create a new movie
-# Expected: 201 Created
+
+######## Create ########
+
+### Create a valid movie
+# Expected: 201 Created, the server creates the id
 # @name createMovie
 POST {{baseUrl}}/movies
 Content-Type: application/json
 
 {
-  "title": "Blade Runner",
-  "director": "Ridley Scott",
-  "year": 1982
+  "title": "Arrival",
+  "year": 2016,
+  "genre": "Sci-Fi"
 }
 
-### Check that the new movie appears in the list
-# Expected: 200 OK, Blade Runner is in the response
-GET {{baseUrl}}/movies
-
-### Invalid movie (title and year missing)
-# Expected: 400 Bad Request
+### Create an invalid movie
+# Expected: 400 Bad Request, VALIDATION_ERROR with a list of details
 POST {{baseUrl}}/movies
 Content-Type: application/json
 
 {
-  "director": "Nobody"
+  "title": "",
+  "year": "not a number"
 }
 
-### Invalid year
-# Expected: 400 Bad Request
-POST {{baseUrl}}/movies
+######## Replace (PUT) ########
+
+### Replace a movie with PUT
+# Expected: 200 OK, title, year and genre are all replaced, id stays 1
+PUT {{baseUrl}}/movies/1
 Content-Type: application/json
 
 {
-  "title": "Future Film",
-  "director": "Someone",
-  "year": "next year"
+  "title": "Inception: Updated Edition",
+  "year": 2010,
+  "genre": "Sci-Fi"
 }
+
+### PUT with a missing property
+# Expected: 400 Bad Request, "year is required" and "genre is required"
+PUT {{baseUrl}}/movies/1
+Content-Type: application/json
+
+{
+  "title": "Inception"
+}
+
+### PUT a movie that does not exist
+# Expected: 404 Not Found
+PUT {{baseUrl}}/movies/999
+Content-Type: application/json
+
+{
+  "title": "Ghost",
+  "year": 1990,
+  "genre": "Drama"
+}
+
+
+######## Update (PATCH) ########
+
+### Partially update a movie
+# Expected: 200 OK, only year changes, title and genre stay the same
+PATCH {{baseUrl}}/movies/2
+Content-Type: application/json
+
+{
+  "year": 2000
+}
+
+### PATCH with an invalid value
+# Expected: 400 Bad Request, "genre must be a non-empty string"
+PATCH {{baseUrl}}/movies/2
+Content-Type: application/json
+
+{
+  "genre": ""
+}
+
+### PATCH a movie that does not exist
+# Expected: 404 Not Found
+PATCH {{baseUrl}}/movies/999
+Content-Type: application/json
+
+{
+  "year": 2000
+}
+
+
+######## Delete ########
+
+### Delete an existing movie (the one created above)
+# Expected: 204 No Content, empty response body
+DELETE {{baseUrl}}/movies/{{createMovie.response.body.id}}
+
+### Delete the same movie again
+# Expected: 404 Not Found, the movie no longer exists
+DELETE {{baseUrl}}/movies/{{createMovie.response.body.id}}
+
+
+######## Query parameters ########
+
+### Filter by genre (case-insensitive)
+# Expected: 200 OK, only Sci-Fi movies
+GET {{baseUrl}}/movies?genre=sci-fi
+
+### Filter by genre and year
+# Expected: 200 OK, only Sci-Fi movies from 2000 onwards
+GET {{baseUrl}}/movies?genre=Sci-Fi&minYear=2000
+
+### Filter and sort by year
+# Expected: 200 OK, matching movies from oldest to newest
+GET {{baseUrl}}/movies?genre=Sci-Fi&minYear=2000&sort=year
+
+### Sort by title
+# Expected: 200 OK, all movies in alphabetical order
+GET {{baseUrl}}/movies?sort=title
+
+### No matching movies
+# Expected: 200 OK, an empty array
+GET {{baseUrl}}/movies?genre=Western
+
+### Use an invalid minYear
+# Expected: 400 Bad Request, error code INVALID_QUERY
+GET {{baseUrl}}/movies?minYear=invalid
+
+### Use an unsupported sort value
+# Expected: 400 Bad Request, error code INVALID_QUERY
+GET {{baseUrl}}/movies?sort=rating
+
+
+######## Fallback and error-handling middleware ########
+
+### Request an unknown route
+# Expected: 404 Not Found, error code ROUTE_NOT_FOUND
+GET {{baseUrl}}/does-not-exist
 
 ### Body that is not valid JSON
-# Expected: 400 Bad Request (rejected by express.json())
+# Expected: 400 Bad Request, error code INVALID_JSON
+# (Kept last: the broken body confuses the syntax colouring below it.)
 POST {{baseUrl}}/movies
 Content-Type: application/json
 
 { "title": "Oops",
-
-### Unknown route
-# Expected: 404 Not Found
-GET {{baseUrl}}/films
-
-
-######## Bonus: PATCH and DELETE ########
-
-### Update a movie
-# Expected: 200 OK
-PATCH {{baseUrl}}/movies/1
-Content-Type: application/json
-
-{
-  "year": 2011
-}
-
-### Verify the update
-# Expected: 200 OK with year 2011
-GET {{baseUrl}}/movies/1
-
-### Update the movie created above (uses the id from the createMovie response)
-# Expected: 200 OK
-PATCH {{baseUrl}}/movies/{{createMovie.response.body.id}}
-Content-Type: application/json
-
-{
-  "title": "Blade Runner: The Final Cut",
-  "year": 2007
-}
-
-### PATCH with nothing to change
-# Expected: 400 Bad Request
-PATCH {{baseUrl}}/movies/1
-Content-Type: application/json
-
-{}
-
-### Delete a movie
-# Expected: 204 No Content
-DELETE {{baseUrl}}/movies/1
-
-### Verify the delete
-# Expected: 404 Not Found
-GET {{baseUrl}}/movies/1
-
-### Delete a movie that does not exist
-# Expected: 404 Not Found
-DELETE {{baseUrl}}/movies/999

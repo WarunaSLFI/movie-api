@@ -1,10 +1,11 @@
 {
   "name": "movie-api",
   "version": "1.0.0",
-  "description": "Movie REST API with Node.js and Express (Backend Development, Week 1)",
+  "description": "Movie REST API with Node.js and Express (Backend Development, Weeks 1-2)",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
+    "start:simple-logger": "node app.js --simple-logger",
     "dev": "nodemon app.js",
     "test": "node --test",
     "lint": "eslint .",
@@ -14,7 +15,8 @@
   "author": "Waruna Bandara Rathnamalala",
   "license": "ISC",
   "dependencies": {
-    "express": "^5.3.0"
+    "express": "^5.3.0",
+    "morgan": "^1.12.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

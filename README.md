@@ -1,8 +1,11 @@
 # Movie API
 
-A REST API for managing a movie collection, built with **Node.js** and **Express 5** for Backend Development, Week 1 (TAMK).
+A REST API for managing a movie collection, built with **Node.js** and **Express 5** for Backend Development (TAMK).
 
-The movie data is stored **in memory** (a JavaScript array), as the Week 1 exercise requires. A database is added later in the course.
+- **Week 1:** first endpoints (`GET`, `POST`), in-memory data, REST Client and Postman tests.
+- **Week 2:** complete CRUD (`PUT`, `PATCH`, `DELETE`), input validation with consistent JSON errors, query parameters for filtering and sorting, Morgan request logging, fallback and error-handling middleware, systematic tests.
+
+The movie data is stored **in memory** (a JavaScript array). A database is added later in the course.
 
 ## Run it
 
@@ -17,42 +20,96 @@ The API runs at <http://localhost:3000/movies>.
 
 During development, `npm run dev` restarts the server automatically (nodemon) when `app.js` changes.
 
+## Movie data
+
+```json
+{ "id": 1, "title": "Inception", "year": 2010, "genre": "Sci-Fi" }
+```
+
+The server creates the `id`. The client sends `title`, `year` and `genre`.
+
 ## Endpoints
 
-| Method | Path          | Success          | Errors    |
-| ------ | ------------- | ---------------- | --------- |
-| GET    | `/movies`     | `200 OK`         | –         |
-| GET    | `/movies/:id` | `200 OK`         | 404       |
-| POST   | `/movies`     | `201 Created`    | 400       |
-| PATCH  | `/movies/:id` | `200 OK`         | 400 · 404 |
-| DELETE | `/movies/:id` | `204 No Content` | 404       |
+| Method | Path          | What it does                  | Success          | Errors    |
+| ------ | ------------- | ----------------------------- | ---------------- | --------- |
+| GET    | `/movies`     | List movies (filter and sort) | `200 OK`         | 400       |
+| GET    | `/movies/:id` | Get one movie                 | `200 OK`         | 404       |
+| POST   | `/movies`     | Create a movie                | `201 Created`    | 400       |
+| PUT    | `/movies/:id` | Replace a whole movie         | `200 OK`         | 400 · 404 |
+| PATCH  | `/movies/:id` | Change some properties        | `200 OK`         | 400 · 404 |
+| DELETE | `/movies/:id` | Delete a movie                | `204 No Content` | 404       |
 
-`PATCH` and `DELETE` are the Week 1 bonus tasks.
+### PUT and PATCH
 
-Error responses are JSON, for example:
+- `PUT` replaces the movie. `title`, `year` and `genre` are all required; only the `id` is kept.
+- `PATCH` changes only the properties in the request body. Everything else stays the same. At least one of the three properties must be sent.
+
+### Query parameters for `GET /movies`
+
+| Parameter | Example                                | Effect                                            |
+| --------- | -------------------------------------- | ------------------------------------------------- |
+| `genre`   | `?genre=Sci-Fi`                        | Only movies of this genre (case-insensitive)      |
+| `minYear` | `?minYear=2000`                        | Only movies from this year onwards                |
+| `sort`    | `?sort=year`                           | `year` = oldest to newest, `title` = alphabetical |
+| combined  | `?genre=Sci-Fi&minYear=2000&sort=year` | All filters apply, then the sort                  |
+
+All parameters are optional. No matches gives `200 OK` with `[]`. An invalid `minYear` or an unsupported `sort` value gives `400`. Sorting works on a copy, so the stored array keeps its order.
+
+### Validation rules
+
+| Property | Rule                                                |
+| -------- | --------------------------------------------------- |
+| `title`  | A non-empty string                                  |
+| `year`   | An integer between 1888 and the current year plus 5 |
+| `genre`  | A non-empty string                                  |
+
+Properties that are not part of the movie (for example an `id` in the body) are ignored.
+
+### Error responses
+
+Every error has the same JSON shape:
 
 ```json
-{ "error": "Movie not found" }
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Movie data is invalid",
+    "details": [
+      "title is required",
+      "year must be an integer between 1888 and 2031"
+    ]
+  }
+}
 ```
 
-```json
-{ "error": "title, director and year are required" }
+| Code                    | Status | When                               |
+| ----------------------- | ------ | ---------------------------------- |
+| `VALIDATION_ERROR`      | 400    | Movie data in the body is invalid  |
+| `INVALID_QUERY`         | 400    | A query parameter is invalid       |
+| `INVALID_JSON`          | 400    | The request body is not valid JSON |
+| `MOVIE_NOT_FOUND`       | 404    | No movie with that id              |
+| `ROUTE_NOT_FOUND`       | 404    | No such route                      |
+| `INTERNAL_SERVER_ERROR` | 500    | Unexpected error on the server     |
+
+## Middleware
+
+```
+Client → morgan → express.json() → route (→ requireValidMovie) → handler → response
+                                      ↓ no route matched
+                                  unknownRouteHandler (404)
+                    any error → errorHandler (400 for broken JSON, otherwise 500)
 ```
 
-### Validation
-
-- `POST` needs `title`, `director` and `year`.
-- `PATCH` accepts any of the three fields, but at least one.
-- `title` and `director` must be non-empty strings.
-- `year` must be a whole number between 1888 and the current year + 10.
-- A body that is not valid JSON is rejected with `400`.
-- Unknown routes return a JSON `404`.
+- **Morgan** (`dev` format) logs every request, for example `GET /movies 200 1.029 ms - 120`. It is registered before `express.json()` so it also logs requests whose JSON body is broken.
+- **simpleLogger** is the hand-written logger from Task 4.2. It is off by default; `node app.js --simple-logger` switches it on next to Morgan for comparison.
+- **requireValidMovie** runs the validation on `POST`, `PUT` and `PATCH` before the route handler.
+- **unknownRouteHandler** and **errorHandler** come after all routes.
 
 ## Testing
 
-- **REST Client** (VS Code): open `requests.http` and click _Send Request_ above any request.
-- **Postman**: import `postman/movie-api.postman_collection.json`. Every request has a test that checks its status code.
-- **Automated tests**: `npm test` runs the same scenarios with Node's built-in test runner.
+- **REST Client** (VS Code): open `requests.http` and click _Send Request_ above any request. Send "Create a valid movie" before the two DELETE requests. The file can be repeated without restarting the server.
+- **Postman**: import `postman/movie-api.postman_collection.json` and run it with the Collection Runner. Every request has tests for the status code and the response body.
+- **Automated tests**: `npm test` runs 28 tests with Node's built-in test runner.
 
 ## Scripts
 
@@ -69,7 +126,7 @@ Error responses are JSON, for example:
 
 ```
 movie-api/
-├── app.js               Express app: data, middleware, routes, error handling
+├── app.js               Express app: data, validation, middleware, routes, error handling
 ├── requests.http        REST Client requests
 ├── postman/             Postman collection
 ├── test/                Automated tests (node:test)
@@ -77,14 +134,6 @@ movie-api/
 └── .prettierrc.json     Prettier settings
 ```
 
-## How a request flows
-
-```
-Client → logger → express.json() → router → validateMovie() → route handler → response
-```
-
-The logger runs before `express.json()` so it also records requests whose body is not valid JSON. `validateMovie()` is used only on `POST /movies` and `PATCH /movies/:id`.
-
 ## Why the data disappears
 
-`let movies = [...]` lives in the memory of the running Node.js process. When the process stops, the operating system frees that memory. The next `node app.js` starts from the three hard-coded movies again, so everything added, changed or deleted is lost.
+`let movies = [...]` lives in the memory of the running Node.js process. When the process stops, the operating system frees that memory. The next `node app.js` starts from the hard-coded movies again, so everything added, changed or deleted is lost.
